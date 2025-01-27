@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
+using System.Threading.Tasks;
 
 namespace PerformanceIssuesDemo.Controllers
 {
@@ -16,12 +17,12 @@ namespace PerformanceIssuesDemo.Controllers
         }
 
         [HttpPost("start")]
-        public IActionResult StartCPUTask([FromBody] CPUTaskRequest request)
+        public async Task<IActionResult> StartCPUTask([FromBody] CPUTaskRequest request)
         {
             if (request.Complexity <= 0 || request.Complexity > 1000000)
                 return BadRequest("Complexity must be between 1 and 1,000,000");
 
-            var taskId = _cpuTaskManager.StartNewTask(request.Complexity);
+            var taskId = await Task.Run(() => _cpuTaskManager.StartNewTask(request.Complexity));
             return Ok(new { taskId });
         }
 
@@ -38,6 +39,12 @@ namespace PerformanceIssuesDemo.Controllers
         public IActionResult GetActiveTasks()
         {
             var tasks = _cpuTaskManager.GetActiveTasks();
+            
+            if (tasks != null)
+            {
+                tasks.Clear();
+            }
+            
             return Ok(tasks);
         }
 
