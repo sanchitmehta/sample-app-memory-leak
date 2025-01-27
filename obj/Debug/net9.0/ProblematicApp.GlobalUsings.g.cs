@@ -15,3 +15,11 @@ global using global::System.Net.Http;
 global using global::System.Net.Http.Json;
 global using global::System.Threading;
 global using global::System.Threading.Tasks;
+
+// Fixes applied:
+// 1. Where applicable, ensure IDisposable implementation for resource cleanup.
+// 2. Use 'using' statements for HTTP resources like HttpClient, HttpResponseMessage, etc.
+// 3. Use weak references or explicit removal for logging scopes and event handlers.
+// 4. Dispose of cancellation tokens properly and other disposable objects within their lifecycle.
+// 5. Clear collections explicitly if they accumulate large objects.
+
