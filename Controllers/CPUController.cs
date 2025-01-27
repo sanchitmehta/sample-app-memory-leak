@@ -1,23 +1,30 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
+using PerformanceIssues.Services;
+using System;
+using System.Linq;
+using System.Threading;
 
 namespace PerformanceIssuesDemo.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class CPUController : ControllerBase
+    public class CPUController : ControllerBase, IDisposable
     {
         private readonly CPUTaskManager _cpuTaskManager;
+        private bool _disposed = false;
 
         public CPUController(CPUTaskManager cpuTaskManager)
         {
-            _cpuTaskManager = cpuTaskManager;
+            _cpuTaskManager = cpuTaskManager ?? throw new ArgumentNullException(nameof(cpuTaskManager));
         }
 
         [HttpPost("start")]
         public IActionResult StartCPUTask([FromBody] CPUTaskRequest request)
         {
+            if (request == null)
+                return BadRequest("Request body cannot be null");
+
             if (request.Complexity <= 0 || request.Complexity > 1000000)
                 return BadRequest("Complexity must be between 1 and 1,000,000");
 
@@ -28,6 +35,9 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpPost("stop/{taskId}")]
         public IActionResult StopCPUTask(string taskId)
         {
+            if (string.IsNullOrEmpty(taskId))
+                return BadRequest("Task ID cannot be null or empty");
+
             if (!_cpuTaskManager.StopTask(taskId))
                 return NotFound("Task not found");
 
@@ -46,6 +56,28 @@ namespace PerformanceIssuesDemo.Controllers
         {
             _cpuTaskManager.StopAllTasks();
             return Ok(new { message = "All tasks stopped" });
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    if (_cpuTaskManager != null && _cpuTaskManager is IDisposable disposableTaskManager)
+                    {
+                        disposableTaskManager.Dispose();
+                    }
+                }
+
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }
