@@ -1,10 +1,11 @@
-﻿namespace PerformanceIssues.Serivces
+namespace PerformanceIssues.Services
 {
-    public class CPUIntensiveTask : ICPUIntensiveTask
+    public class CPUIntensiveTask : ICPUIntensiveTask, IDisposable
     {
         private readonly int _complexity;
         private volatile bool _isRunning;
         private readonly List<double[]> _results = new();
+        private Task _task;
 
         public CPUIntensiveTask(int complexity)
         {
@@ -14,7 +15,7 @@
         public void Start()
         {
             _isRunning = true;
-            Task.Run(() =>
+            _task = Task.Run(() =>
             {
                 while (_isRunning)
                 {
@@ -24,7 +25,11 @@
                         results[i % 1000] = Math.Pow(Math.Sin(i), Math.Cos(i)) +
                                           Math.Sqrt(Math.Abs(Math.Tan(i)));
                     }
-                    // Memory leak: storing results without bounds
+                    // Bound the size of the results to prevent memory leak
+                    if (_results.Count > 100)
+                    {
+                        _results.RemoveAt(0);
+                    }
                     _results.Add(results);
                 }
             });
@@ -33,6 +38,14 @@
         public void Stop()
         {
             _isRunning = false;
+            _task?.Wait();
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            _results.Clear();
+            _task?.Dispose();
         }
     }
 }
