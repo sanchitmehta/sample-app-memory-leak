@@ -1,10 +1,12 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 
-namespace PerformanceIssues.Serivces
+namespace PerformanceIssues.Services
 {
-    public class CPUTaskManager
+    public class CPUTaskManager : IDisposable
     {
         private readonly ConcurrentDictionary<string, ICPUIntensiveTask> _activeTasks = new();
+        private bool _disposed = false;
 
         public string StartNewTask(int complexity)
         {
@@ -20,6 +22,7 @@ namespace PerformanceIssues.Serivces
             if (_activeTasks.TryRemove(taskId, out var task))
             {
                 task.Stop();
+                task.Dispose();
                 return true;
             }
             return false;
@@ -30,6 +33,7 @@ namespace PerformanceIssues.Serivces
             foreach (var task in _activeTasks.Values)
             {
                 task.Stop();
+                task.Dispose();
             }
             _activeTasks.Clear();
         }
@@ -37,6 +41,24 @@ namespace PerformanceIssues.Serivces
         public IEnumerable<string> GetActiveTasks()
         {
             return _activeTasks.Keys;
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    StopAllTasks();
+                }
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
     }
 }
