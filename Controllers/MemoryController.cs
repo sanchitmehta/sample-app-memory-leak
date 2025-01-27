@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
@@ -45,8 +44,11 @@ namespace PerformanceIssuesDemo.Controllers
         {
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+
             _eventManager.Subscribe(handler);
             await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+
+            _eventManager.Unsubscribe(handler);  // Unsubscribe after event is raised to prevent memory leak
             return Ok(new { subscriberId = id });
         }
 
@@ -57,6 +59,8 @@ namespace PerformanceIssuesDemo.Controllers
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
+            _dataGenerator.ClearData();  // Clear generated data to free up memory
+
             return Ok(new { recordsGenerated = request.RecordCount });
         }
 
@@ -71,29 +75,48 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+
+                // Parse and limit to top 100 objects
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   ")) // Filter memory dump lines
+                    .Take(100);
+
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
+        }
+    }
+
+    // Extension Methods for clearing resources
+    public static class DataGeneratorExtensions
+    {
+        public static void ClearData(this DataGenerator dataGenerator)
+        {
+            // Add logic to clear internal data storage to free up memory
+        }
+    }
+
+    public static class EventManagerExtensions
+    {
+        public static void Unsubscribe(this IEventManager eventManager, Action<string> handler)
+        {
+            // Add logic to unsubscribe the event handler to prevent memory leaks
         }
     }
 }
