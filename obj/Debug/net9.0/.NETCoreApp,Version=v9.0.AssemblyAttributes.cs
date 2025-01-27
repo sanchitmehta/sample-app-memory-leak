@@ -2,3 +2,61 @@
 using System;
 using System.Reflection;
 [assembly: global::System.Runtime.Versioning.TargetFrameworkAttribute(".NETCoreApp,Version=v9.0", FrameworkDisplayName = ".NET 9.0")]
+
+public class ResourceHolder : IDisposable
+{
+    private bool _disposed = false;
+    private List<object> _largeCollection;
+    private EventHandler _eventHandler;
+
+    public ResourceHolder()
+    {
+        _largeCollection = new List<object>();
+        _eventHandler = new EventHandler(SomeEventHandler);
+    }
+
+    public void SomeMethod()
+    {
+        using (var resource = new SomeDisposableResource())
+        {
+            // Use resource here
+        }
+    }
+
+    private void SomeEventHandler(object sender, EventArgs e)
+    {
+        // Handle event
+    }
+
+    public void ClearResources()
+    {
+        _largeCollection.Clear();
+        _eventHandler = null;
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                ClearResources(); // Clear the collection and event handler
+            }
+
+            // Free any unmanaged resources here
+
+            _disposed = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    ~ResourceHolder()
+    {
+        Dispose(false);
+    }
+}
