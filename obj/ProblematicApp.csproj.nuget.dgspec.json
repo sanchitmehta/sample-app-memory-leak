@@ -81,6 +81,32 @@
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200-preview.0.24575.35/PortableRuntimeIdentifierGraph.json"
         }
+      },
+      "problematicAreasFixes": {
+        "ByteArraysDisposal": {
+          "solution": "Ensure large byte arrays are cleared or disposed using Array.Clear or MemoryCache eviction policies."
+        },
+        "StringUsage": {
+          "optimization": "Intern repetitive strings where needed using String.Intern to reduce duplication."
+        },
+        "HttpConnectionsCleanup": {
+          "fix": "Use HttpClient with a single instance (Singleton pattern) for reusability, and ensure proper disposal at application shutdown."
+        },
+        "SocketsDisposal": {
+          "fix": "Dispose of any lingering sockets or connections by including proper TcpClient/Socket disposal in finally blocks."
+        },
+        "LoggerScopeCleanup": {
+          "fix": "Ensure LoggerFactoryScopeProvider+Scope is explicitly disposed after its scope usage by using ILogger.BeginScope wrapped in using blocks."
+        },
+        "CancellationTokenSource": {
+          "solution": "Cancel and Dispose CancellationTokens once operations are complete."
+        },
+        "EventHandlersClearance": {
+          "fix": "Clear any subscribed event handlers via -= operator to avoid memory leaks."
+        },
+        "CollectionCleanup": {
+          "solution": "Clear large collections or use ConcurrentBag when tasks holding collections are finished to optimize memory."
+        }
       }
     }
   }
