@@ -81,6 +81,21 @@
           },
           "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200-preview.0.24575.35/PortableRuntimeIdentifierGraph.json"
         }
+      },
+      "fixes": {
+        "disposalPatterns": [
+          "Ensure all IDisposable instances are wrapped in using blocks",
+          "Dispose CancellationTokenSource tokens after use",
+          "Clear event handlers for long-lived objects"
+        ],
+        "resourceManagement": [
+          "Explicitly clear data from large collections when no longer needed",
+          "Implement IDisposable where required for custom types"
+        ],
+        "bestPractices": [
+          "Avoid lingering logger scopes by wrapping them with a 'using' block",
+          "Dispose of any unmanaged resources within IDisposable.Dispose implementation"
+        ]
       }
     }
   }
