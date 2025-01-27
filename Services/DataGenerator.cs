@@ -1,9 +1,15 @@
-﻿namespace PerformanceIssues.Services
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace PerformanceIssues.Services
 {
-    public class DataGenerator
+    public class DataGenerator : IDisposable
     {
         private readonly List<object> _storedData = new();
         private readonly Random _random = new();
+        private bool _disposed = false;
 
         public async Task GenerateAndStoreData(int count)
         {
@@ -33,6 +39,30 @@
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             return new string(Enumerable.Repeat(chars, length)
                 .Select(s => s[_random.Next(s.Length)]).ToArray());
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    _storedData.Clear();  // Properly dispose of the stored data
+                }
+
+                _disposed = true;
+            }
+        }
+
+        ~DataGenerator()
+        {
+            Dispose(false);
         }
     }
 }
