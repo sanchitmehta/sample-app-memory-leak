@@ -11,4 +11,148 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Program.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
 </Project>
+`Program.cs`:
+using System;
+using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Net;
+using System.Text;
+using System.Threading;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddSingleton<ILoggerFactory, LoggerFactory>();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
+
+public class SomeController : ControllerBase
+{
+    private readonly ILogger<SomeController> _logger;
+    private readonly ILoggerFactory _loggerFactory;
+
+    public SomeController(ILogger<SomeController> logger, ILoggerFactory loggerFactory)
+    {
+        _logger = logger;
+        _loggerFactory = loggerFactory;
+    }
+
+    [HttpGet("/process")]
+    public IActionResult Process()
+    {
+        using (_logger.BeginScope("ProcessingScope"))
+        {
+            try
+            {
+                ProcessData();
+                return Ok("Processed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing data");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+    }
+
+    private void ProcessData()
+    {
+        byte[] data = Encoding.UTF8.GetBytes("Some data...");
+        using (var pipe = new Pipe())
+        {
+            var writer = pipe.Writer;
+            var reader = pipe.Reader;
+            
+            // Simulate async operations
+            var writeResult = writer.WriteAsync(data).Result;
+            writer.CompleteAsync().Wait();
+            
+            var readResult = reader.ReadAsync().Result;
+            reader.CompleteAsync();
+            // Process data...
+            
+            // Ensure data structures are cleared
+            data = null;
+            GC.Collect();
+        }
+
+        using (var cts = new CancellationTokenSource())
+        {
+            if (cts.Token.IsCancellationRequested)
+            {
+                _logger.LogInformation("Operation cancelled");
+                return;
+            }
+
+            // Simulate some operations with cancellation
+            cts.Cancel();
+        }
+
+        _logger.LogInformation("Data processed");
+    }
+}
+
+public class Startup
+{
+    // Other Startup code and DI registrations, if any...
+    
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        if (env.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+        }
+
+        app.UseHttpsRedirection();
+        app.UseRouting();
+        app.UseAuthorization();
+
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllers();
+        });
+    }
+}
+
+// Ensure proper initialization of services including ILoggerFactory, IHttpContextAccessor, etc.
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        CreateHostBuilder(args).Build().Run();
+    }
+
+    public static IHostBuilder CreateHostBuilder(string[] args) =>
+        Host.CreateDefaultBuilder(args)
+            .ConfigureWebHostDefaults(webBuilder =>
+            {
+                webBuilder.UseStartup<Startup>();
+            });
+}
