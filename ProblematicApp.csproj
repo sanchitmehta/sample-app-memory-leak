@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -10,5 +10,14 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
+
+  <!-- Suggested guidelines for solving memory leaks -->
+
+  <!-- 1. Ensure proper disposal patterns by implementing IDisposable where necessary and overriding the Dispose method to release all resources -->
+  <!-- 2. Fix resource leaks by properly disposing of resources and freeing unmanaged resources -->
+  <!-- 3. Clear event handlers by unsubscribing from events when they are no longer needed -->
+  <!-- 4. Utilize using statements for objects that implement IDisposable to ensure they are disposed of when no longer needed -->
+  <!-- 5. Clear large collections such as lists and dictionaries when they are no longer needed to free up memory -->
+  <!-- 6. Use memory profiling tools to identify objects that are retaining more memory than expected and address those issues appropriately -->
 
 </Project>
