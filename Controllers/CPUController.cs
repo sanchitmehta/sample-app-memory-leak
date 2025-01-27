@@ -1,18 +1,20 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
+using System;
 
 namespace PerformanceIssuesDemo.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class CPUController : ControllerBase
+    public class CPUController : ControllerBase, IDisposable
     {
         private readonly CPUTaskManager _cpuTaskManager;
+        private bool _disposed = false;
 
         public CPUController(CPUTaskManager cpuTaskManager)
         {
-            _cpuTaskManager = cpuTaskManager;
+            _cpuTaskManager = cpuTaskManager ?? throw new ArgumentNullException(nameof(cpuTaskManager));
         }
 
         [HttpPost("start")]
@@ -46,6 +48,25 @@ namespace PerformanceIssuesDemo.Controllers
         {
             _cpuTaskManager.StopAllTasks();
             return Ok(new { message = "All tasks stopped" });
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    // Clean up the task manager
+                    _cpuTaskManager.Dispose();
+                }
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }
