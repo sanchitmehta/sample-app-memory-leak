@@ -15,3 +15,125 @@ global using global::System.Net.Http;
 global using global::System.Net.Http.Json;
 global using global::System.Threading;
 global using global::System.Threading.Tasks;
+global using global::System.Net;
+
+// Implementation of IDisposable where needed and applying proper disposal patterns
+internal class ProblematicResourceHandler : IDisposable
+{
+    private readonly HttpClient _httpClient = new();
+    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+    private readonly List<object> _largeCollection = new();
+    private bool _isDisposed;
+
+    ~ProblematicResourceHandler()
+    {
+        Dispose(false);
+    }
+
+    public async Task HandleResourceAsync(CancellationToken cancellationToken)
+    {
+        // Ensure existing CancellationTokenSource is disposed to avoid leaks
+        using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        await _semaphore.WaitAsync(linkedTokenSource.Token);
+        try
+        {
+            // Perform operations and dispose temporary streams or other disposable objects
+            using var responseStream = await _httpClient.GetStreamAsync("http://example.com", linkedTokenSource.Token);
+            // Use resources as needed
+            
+            _largeCollection.Add(new byte[1024]); // Simulating resource addition
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    public void AddToCollection(object item)
+    {
+        // Clear large collection if no longer needed
+        _largeCollection.Clear();
+        _largeCollection.Add(item);
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_isDisposed) return;
+
+        if (disposing)
+        {
+            // Safely release disposable resources
+            _httpClient.Dispose();
+            _semaphore.Dispose();
+        }
+
+        _isDisposed = true;
+    }
+}
+
+// Other systems requiring proper cleanup logic
+internal class LoggerScopeManager : IDisposable
+{
+    private readonly ILogger _logger;
+    private IDisposable? _loggerScope;
+    private bool _isDisposed;
+
+    public LoggerScopeManager(ILogger logger)
+    {
+        _logger = logger;
+    }
+
+    public void BeginScope(string message)
+    {
+        ClearCurrentScope();
+        _loggerScope = _logger.BeginScope(message);
+    }
+
+    public void ClearCurrentScope()
+    {
+        _loggerScope?.Dispose();
+        _loggerScope = null;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+
+        ClearCurrentScope();
+        _isDisposed = true;
+    }
+}
+
+// Networking cleanup patterns
+internal class NetworkingObjectHandler : IDisposable
+{
+    private readonly List<IPAddress> _ipAddresses = new();
+    private readonly List<IPEndPoint> _ipEndPoints = new();
+    private bool _isDisposed;
+
+    public void AddNetworkingObject(IPAddress ipAddress, IPEndPoint ipEndPoint)
+    {
+        _ipAddresses.Add(ipAddress);
+        _ipEndPoints.Add(ipEndPoint);
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+
+        // Clear large collections when no longer needed
+        _ipAddresses.Clear();
+        _ipEndPoints.Clear();
+
+        _isDisposed = true;
+    }
+}
+
+// General guidance: Use the above as a structural example to implement IDisposable on all relevant objects and ensure all disposable resources are properly released.
