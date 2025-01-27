@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
+using System;
 
 namespace PerformanceIssuesDemo.Controllers
 {
@@ -45,8 +45,17 @@ namespace PerformanceIssuesDemo.Controllers
         {
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+
+            void SafeUnsubscribe()
+            {
+                _eventManager.Unsubscribe(handler);
+            }
+
             _eventManager.Subscribe(handler);
             await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+
+            SafeUnsubscribe();
+            
             return Ok(new { subscriberId = id });
         }
 
@@ -71,28 +80,27 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
+
             using var process = Process.Start(processStartInfo);
             if (process is null)
             {
                 return BadRequest("Failed to start memory dump process");
             }
-    
+
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
-    
+
             if (process.ExitCode != 0)
             {
                 return BadRequest(new { error });
             }
-    
-            // Parse and limit to top 100 objects
+
             var lines = output.Split('\n')
                 .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
+                .Where(l => l.Contains("   "))
                 .Take(100);
-    
+
             return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
