@@ -15,3 +15,100 @@ global using global::System.Net.Http;
 global using global::System.Net.Http.Json;
 global using global::System.Threading;
 global using global::System.Threading.Tasks;
+
+public class ProblematicApp : IDisposable
+{
+    private HttpClient _httpClient;
+    private Timer _timer;
+    private List<object> _largeCollection;
+    private bool _disposed;
+
+    public ProblematicApp()
+    {
+        _httpClient = new HttpClient();
+        _timer = new Timer(TimerCallback, null, 0, 1000);
+        _largeCollection = new List<object>();
+    }
+
+    private void TimerCallback(object state)
+    {
+        // Timer callback logic
+    }
+
+    public void ExecuteTask()
+    {
+        using (var scope = new TransactionScope())
+        {
+            // Task execution logic
+        }
+    }
+
+    public void ClearLargeCollections()
+    {
+        _largeCollection.Clear();
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _httpClient?.Dispose();
+                _timer?.Dispose();
+                ClearLargeCollections();
+            }
+            _disposed = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    ~ProblematicApp()
+    {
+        Dispose(false);
+    }
+}
+
+public class Startup
+{
+    private readonly IConfiguration _configuration;
+
+    public Startup(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddControllers();
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        if (env.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+        }
+        else
+        {
+            app.UseExceptionHandler("/Home/Error");
+            app.UseHsts();
+        }
+
+        app.UseHttpsRedirection();
+        app.UseStaticFiles();
+        app.UseRouting();
+        app.UseAuthorization();
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}");
+        });
+    }
+}
