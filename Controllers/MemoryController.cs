@@ -1,27 +1,27 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class MemoryController : ControllerBase
+    public class MemoryController : ControllerBase, IDisposable
     {
         private readonly ILeakyCache _leakyCache;
         private readonly IEventManager _eventManager;
         private readonly DataGenerator _dataGenerator;
+        private bool _disposed;
 
         public MemoryController(
             ILeakyCache leakyCache,
             IEventManager eventManager,
             DataGenerator dataGenerator)
         {
-            _leakyCache = leakyCache;
-            _eventManager = eventManager;
-            _dataGenerator = dataGenerator;
+            _leakyCache = leakyCache ?? throw new ArgumentNullException(nameof(leakyCache));
+            _eventManager = eventManager ?? throw new ArgumentNullException(nameof(eventManager));
+            _dataGenerator = dataGenerator ?? throw new ArgumentNullException(nameof(dataGenerator));
         }
 
         [HttpPost("cache")]
@@ -44,9 +44,28 @@ namespace PerformanceIssuesDemo.Controllers
         public async Task<IActionResult> Subscribe()
         {
             var id = Guid.NewGuid().ToString();
-            Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+            Action<string> handler = msg =>
+            {
+                try
+                {
+                    Console.WriteLine($"Event received for {id}: {msg}");
+                }
+                catch
+                {
+                    // Log or handle exception during event processing
+                }
+            };
+
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                _eventManager.Unsubscribe(handler);
+            }
+
             return Ok(new { subscriberId = id });
         }
 
@@ -71,29 +90,48 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
+
             using var process = Process.Start(processStartInfo);
             if (process is null)
             {
                 return BadRequest("Failed to start memory dump process");
             }
-    
+
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
-    
+
             if (process.ExitCode != 0)
             {
                 return BadRequest(new { error });
             }
-    
-            // Parse and limit to top 100 objects
+
             var lines = output.Split('\n')
                 .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
+                .Where(l => l.Contains("   "))
                 .Take(100);
-    
+
             return Ok(new { memoryDump = string.Join("\n", lines) });
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    // Dispose unmanaged resources if any are used in this controller in the future.
+                }
+
+                // Clear any large collections or resources if necessary here.
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }
