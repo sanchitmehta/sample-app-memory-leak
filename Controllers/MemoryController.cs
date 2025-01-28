@@ -1,8 +1,10 @@
+
 ﻿using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
+using System.Net;
+using System.Net.Sockets;
 
 namespace PerformanceIssuesDemo.Controllers
 {
@@ -45,9 +47,17 @@ namespace PerformanceIssuesDemo.Controllers
         {
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+            // Subscribe Unsubscribe Pattern
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
-            return Ok(new { subscriberId = id });
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+                return Ok(new { subscriberId = id });
+            }
+            finally
+            {
+                _eventManager.Unsubscribe(handler);
+            }
         }
 
         [HttpPost("generate-data")]
@@ -56,6 +66,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
+            await using var scope = new AsyncServiceScope(); // Assuming AsyncServiceScope implements IAsyncDisposable
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
             return Ok(new { recordsGenerated = request.RecordCount });
         }
