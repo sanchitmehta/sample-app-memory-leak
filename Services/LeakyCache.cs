@@ -1,15 +1,18 @@
-﻿using System.Collections.Concurrent;
+using System;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
-namespace PerformanceIssues.Serivces
+namespace PerformanceIssues.Services
 {
-    public class LeakyCache : ILeakyCache
+    public class LeakyCache : ILeakyCache, IDisposable
     {
-        private static readonly ConcurrentDictionary<string, byte[]> _cache = new();
-        private static readonly Random _random = new();
+        private readonly ConcurrentDictionary<string, byte[]> _cache = new();
+        private readonly Random _random = new();
+        private bool _disposed = false;
 
         public async Task<string> AddToCache(string key, int sizeInMb)
         {
-            // Intentionally creating large byte arrays and storing them indefinitely
+            // Creating large byte arrays
             byte[] data = new byte[sizeInMb * 1024 * 1024];
             _random.NextBytes(data);
 
@@ -21,5 +24,37 @@ namespace PerformanceIssues.Serivces
         }
 
         public int GetCacheSize() => _cache.Count;
+
+        public void ClearCache()
+        {
+            _cache.Clear();
+        }
+
+        ~LeakyCache()
+        {
+            Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    // Dispose managed resources
+                    _cache.Clear();
+                }
+
+                // Free unmanaged resources (if any)
+
+                _disposed = true;
+            }
+        }
     }
 }
