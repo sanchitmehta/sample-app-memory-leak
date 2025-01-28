@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
+using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
 {
@@ -13,6 +13,15 @@ namespace PerformanceIssuesDemo.Controllers
         public CPUController(CPUTaskManager cpuTaskManager)
         {
             _cpuTaskManager = cpuTaskManager;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _cpuTaskManager?.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         [HttpPost("start")]
@@ -38,6 +47,10 @@ namespace PerformanceIssuesDemo.Controllers
         public IActionResult GetActiveTasks()
         {
             var tasks = _cpuTaskManager.GetActiveTasks();
+
+            // Release memory held by large collections
+            _cpuTaskManager.ClearCompletedTasks();
+
             return Ok(tasks);
         }
 
@@ -45,6 +58,10 @@ namespace PerformanceIssuesDemo.Controllers
         public IActionResult StopAllTasks()
         {
             _cpuTaskManager.StopAllTasks();
+
+            // Release memory held by large collections
+            _cpuTaskManager.ClearCompletedTasks();
+
             return Ok(new { message = "All tasks stopped" });
         }
     }
