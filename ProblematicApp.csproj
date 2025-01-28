@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -11,4 +11,151 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="**\*.cs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
+
+<File Include="Controllers\HomeController.cs" Remove="true" />
+<File Include="Controllers\HomeController.cs" ToUpdateContent="true" />
+
+using System;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System.Text;
+
+namespace Problemapp.Controllers
+{
+    public class HomeController : Controller
+    {
+        private readonly ILogger<HomeController> _logger;
+
+        public HomeController(ILogger<HomeController> logger)
+        {
+            _logger = logger;
+        }
+
+        public IActionResult Index()
+        {
+            byte[] data = null;
+            StringBuilder strBuilder = null;
+
+            try
+            {
+                data = new byte[1024];
+                strBuilder = new StringBuilder();
+
+                // Simulate some work with the data
+                _logger.LogInformation("Index action invoked.");
+                strBuilder.AppendLine("Hello, World!");
+
+                return View();
+            }
+            finally
+            {
+                if (data != null)
+                {
+                    Array.Clear(data, 0, data.Length);
+                }
+
+                strBuilder?.Clear();
+                strBuilder = null;
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                // Dispose any other disposable objects here
+                _logger.LogInformation("Disposing HomeController");
+            }
+            base.Dispose(disposing);
+        }
+    }
+}
+
+<File Include="Services\DataService.cs" Remove="true" />
+<File Include="Services\DataService.cs" ToUpdateContent="true" />
+
+using System;
+using System.Net.Http;
+using System.Threading.Tasks;
+
+namespace ProblemApp.Services
+{
+    public class DataService : IDisposable
+    {
+        private readonly HttpClient _httpClient;
+
+        public DataService(HttpClient httpClient)
+        {
+            _httpClient = httpClient;
+        }
+
+        public async Task<string> GetDataAsync(string url)
+        {
+            using (var response = await _httpClient.GetAsync(url))
+            {
+                response.EnsureSuccessStatusCode();
+                string content = await response.Content.ReadAsStringAsync();
+                return content;
+            }
+        }
+
+        public void Dispose()
+        {
+            _httpClient?.Dispose();
+        }
+    }
+}
+
+<File Include="Logging\CustomLogger.cs" Remove="true" />
+<File Include="Logging\CustomLogger.cs" ToUpdateContent="true" />
+
+using System;
+using Microsoft.Extensions.Logging;
+
+namespace ProblemApp.Logging
+{
+    public class CustomLogger : ILogger, IDisposable
+    {
+        private readonly string _categoryName;
+        private readonly Action<string> _logAction;
+
+        public CustomLogger(string categoryName, Action<string> logAction)
+        {
+            _categoryName = categoryName;
+            _logAction = logAction;
+        }
+
+        public IDisposable BeginScope<TState>(TState state)
+        {
+            // Implement scope disposal pattern
+            return default;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            // Implement the logic to determine if the logger is enabled
+            return true;
+        }
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, 
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(logLevel))
+            {
+                return;
+            }
+
+            _logAction($"{logLevel}: {_categoryName} - {formatter(state, exception)}");
+        }
+
+        public void Dispose()
+        {
+            // Implement any required cleanup
+        }
+    }
+}
