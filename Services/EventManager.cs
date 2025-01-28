@@ -1,15 +1,20 @@
-﻿namespace PerformanceIssues.Serivces
+
+namespace PerformanceIssues.Services
 {
-    public class EventManager : IEventManager
+    public class EventManager : IEventManager, IDisposable
     {
         private readonly List<WeakReference> _subscribers = new();
-        private readonly List<Action<string>> _strongSubscribers = new();  // Intentional memory leak
-
-        public void Subscribe(Action<string> handler)
+        private readonly List<Action<string>> _temporarySubscribers = new();
+        private bool _disposed = false;
+        
+        public void SubscribeWeak(Action<string> handler)
         {
-            // Memory leak: storing both weak and strong references
             _subscribers.Add(new WeakReference(handler));
-            _strongSubscribers.Add(handler);  // This prevents garbage collection
+        }
+
+        public void SubscribeStrong(Action<string> handler)
+        {
+            _temporarySubscribers.Add(handler);
         }
 
         public void RaiseEvent(string message)
@@ -22,10 +27,30 @@
                 }
             }
 
-            foreach (var handler in _strongSubscribers)
+            foreach (var handler in _temporarySubscribers)
             {
                 handler(message);
             }
+        }
+
+        public void ClearStrongSubscribers()
+        {
+            _temporarySubscribers.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _subscribers.Clear();
+                _temporarySubscribers.Clear();
+                _disposed = true;
+            }
+        }
+
+        ~EventManager()
+        {
+            Dispose();
         }
     }
 }
