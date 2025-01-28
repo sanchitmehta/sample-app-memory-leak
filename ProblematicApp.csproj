@@ -1,4 +1,6 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+File: ProblematicApp.csproj
+Content:
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -10,5 +12,141 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Update="Http1Connection.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+    <Compile Update="HttpRequestHeaders.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+    <Compile Update="NetworkResources.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+    <Compile Update="ByteAndStringHandling.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+    <Compile Update="GenericObjectsHandling.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+    <Compile Update="PipeHandling.cs">
+      <DependentUpon>ProblematicApp.csproj</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  
 
 </Project>
+
+File: Http1Connection.cs
+Content:
+using System;
+public class Http1Connection : IDisposable
+{
+    private readonly HttpClient _client = new HttpClient();
+    public void Dispose()
+    {
+        _client.Dispose();
+    }
+}
+
+File: HttpRequestHeaders.cs
+Content:
+using System;
+public class HttpRequestHeaders : IDisposable
+{
+    private List<string> _headers = new List<string>();
+    public void AddHeader(string header)
+    {
+        _headers.Add(header);
+    }
+    public void Dispose()
+    {
+        _headers.Clear();
+    }
+}
+
+File: NetworkResources.cs
+Content:
+using System;
+using System.Net;
+
+public class NetworkResources : IDisposable
+{
+    private readonly IPAddress? _ipAddress;
+    private readonly IPEndPoint? _ipEndPoint;
+    public NetworkResources(IPAddress ipAddress, IPEndPoint ipEndPoint)
+    {
+        _ipAddress = ipAddress;
+        _ipEndPoint = ipEndPoint;
+    }
+    public void Dispose()
+    {
+        _ipAddress = null;
+        _ipEndPoint = null;
+    }
+}
+
+File: ByteAndStringHandling.cs
+Content:
+using System;
+public class ByteAndStringHandling : IDisposable
+{
+    public byte[] ByteArray { get; set; } = Array.Empty<byte>();
+    public string StringData { get; set; } = string.Empty;
+
+    public void Dispose()
+    {
+        ByteArray = Array.Empty<byte>();
+        StringData = string.Empty;
+    }
+}
+
+File: GenericObjectsHandling.cs
+Content:
+using System;
+public class GenericObjectsHandling : IDisposable
+{
+    public List<object> GenericObjects { get; private set; } = new List<object>();
+
+    public void Dispose()
+    {
+        GenericObjects.Clear();
+    }
+}
+
+File: PipeHandling.cs
+Content:
+using System;
+using System.IO.Pipelines;
+
+public class PipeHandling : IDisposable
+{
+    private readonly Pipe _pipe = new Pipe();
+
+    public void AddToPipe(ReadOnlyMemory<byte> data)
+    {
+        _pipe.Writer.WriteAsync(data).AsTask().Wait();
+    }
+
+    public void Dispose()
+    {
+        _pipe.Writer.Complete();
+        _pipe.Reader.Complete();
+    }
+}
+
+File: ProperCancellation.cs
+Content:
+using System;
+using System.Threading;
+
+public class ProperCancellation : IDisposable
+{
+    private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+
+    public void Dispose()
+    {
+        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
+    }
+}
