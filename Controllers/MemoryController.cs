@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
@@ -44,9 +44,20 @@ namespace PerformanceIssuesDemo.Controllers
         public async Task<IActionResult> Subscribe()
         {
             var id = Guid.NewGuid().ToString();
-            Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
-            _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            Action<string> handler = null;
+            try
+            {
+                handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+                _eventManager.Subscribe(handler);
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                if (handler != null)
+                {
+                    _eventManager.Unsubscribe(handler);
+                }
+            }
             return Ok(new { subscriberId = id });
         }
 
@@ -57,6 +68,7 @@ namespace PerformanceIssuesDemo.Controllers
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
+            _dataGenerator.ClearTemporaryData(); // Ensure large collections are cleared after usage
             return Ok(new { recordsGenerated = request.RecordCount });
         }
 
@@ -72,28 +84,29 @@ namespace PerformanceIssuesDemo.Controllers
                 UseShellExecute = false
             };
     
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+    
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+    
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+    
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   "))
+                    .Take(100);
+    
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
 }
