@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
@@ -46,8 +46,15 @@ namespace PerformanceIssuesDemo.Controllers
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
-            return Ok(new { subscriberId = id });
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+                return Ok(new { subscriberId = id });
+            }
+            finally
+            {
+                _eventManager.Unsubscribe(handler);
+            }
         }
 
         [HttpPost("generate-data")]
@@ -71,29 +78,30 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   "))
+                    .Take(100);
+
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
 }
