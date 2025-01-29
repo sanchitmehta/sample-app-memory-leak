@@ -1,31 +1,19 @@
-﻿namespace PerformanceIssues.Serivces
+﻿namespace PerformanceIssues.Services
 {
-    public class EventManager : IEventManager
+    using System.Net.Http;
+
+    public class EventManager : IEventManager, IDisposable
     {
         private readonly List<WeakReference> _subscribers = new();
-        private readonly List<Action<string>> _strongSubscribers = new();  // Intentional memory leak
+        private readonly HttpClient _httpClient = new();
+        private bool _disposed;
 
         public void Subscribe(Action<string> handler)
         {
-            // Memory leak: storing both weak and strong references
+            if (handler == null throw new ArgumentNullException(nameof(handler));
             _subscribers.Add(new WeakReference(handler));
-            _strongSubscribers.Add(handler);  // This prevents garbage collection
         }
 
         public void RaiseEvent(string message)
         {
-            foreach (var weakRef in _subscribers.ToList())
-            {
-                if (weakRef.Target is Action<string> handler)
-                {
-                    handler(message);
-                }
-            }
-
-            foreach (var handler in _strongSubscribers)
-            {
-                handler(message);
-            }
-        }
-    }
-}
+if any mre issues vs_unrefences  ok ?
