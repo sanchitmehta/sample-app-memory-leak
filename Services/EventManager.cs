@@ -1,30 +1,44 @@
-﻿namespace PerformanceIssues.Serivces
+namespace PerformanceIssues.Services
 {
-    public class EventManager : IEventManager
+    public class EventManager : IEventManager, IDisposable
     {
         private readonly List<WeakReference> _subscribers = new();
-        private readonly List<Action<string>> _strongSubscribers = new();  // Intentional memory leak
+        private bool _isDisposed = false;
 
         public void Subscribe(Action<string> handler)
         {
-            // Memory leak: storing both weak and strong references
+            if (handler == null) throw new ArgumentNullException(nameof(handler));
             _subscribers.Add(new WeakReference(handler));
-            _strongSubscribers.Add(handler);  // This prevents garbage collection
         }
 
         public void RaiseEvent(string message)
         {
+            if (_isDisposed) throw new ObjectDisposedException(nameof(EventManager));
+
             foreach (var weakRef in _subscribers.ToList())
             {
                 if (weakRef.Target is Action<string> handler)
                 {
                     handler(message);
                 }
+                else
+                {
+                    _subscribers.Remove(weakRef); // Cleanup stale weak references
+                }
             }
+        }
 
-            foreach (var handler in _strongSubscribers)
+        public void ClearSubscribers()
+        {
+            _subscribers.Clear(); // Clear the collection when it's no longer needed
+        }
+
+        public void Dispose()
+        {
+            if (!_isDisposed)
             {
-                handler(message);
+                _subscribers.Clear();
+                _isDisposed = true;
             }
         }
     }
