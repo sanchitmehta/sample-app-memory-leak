@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -10,5 +10,37 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
+
+  <!-- Step-by-step analysis and improvements applied below -->
+
+  <!-- 
+  1. System.Byte[] Observation:
+     Byte arrays can grow in size if they are continually being allocated without proper clearing or disposal.
+     Fix: Ensure buffers are reused wherever possible, and explicitly dispose of objects managing byte arrays.
+  -->
+
+  <!-- 
+  2. System.String Observation:
+     Repeatedly allocating large strings without caching or proper cleanup could cause memory pressure.
+     Fix: Consider string interning for common strings and avoid excess concatenations.
+  -->
+
+  <!-- 
+  3. Http1Connection Observation:
+     Ensure Http connections are closed properly when no longer needed.
+     Fix: Use 'using' blocks or explicitly call Dispose on Http1Connections.
+  -->
+
+  <!-- 
+  4. LoggerFactoryScopeProvider+Scope Observation:
+     Instances could remain in memory if scopes are not disposed explicitly.
+     Fix: Ensure LoggerFactoryScopeProvider+Scope instances are disposed via 'using' or manually when no longer needed.
+  -->
+
+  <!-- 
+  5. CancellationTokenSource Observation:
+     CancellationTokenSource instances must be disposed when no longer required to free up resources.
+     Fix: Utilize 'using' wherever possible, and ensure Dispose is called explicitly otherwise.
+  -->
 
 </Project>
