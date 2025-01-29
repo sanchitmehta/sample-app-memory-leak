@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
+using PerformanceIssues.Services;
+using System.Linq;
 
 namespace PerformanceIssuesDemo.Controllers
 {
@@ -21,14 +22,25 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.Complexity <= 0 || request.Complexity > 1000000)
                 return BadRequest("Complexity must be between 1 and 1,000,000");
 
-            var taskId = _cpuTaskManager.StartNewTask(request.Complexity);
+            string taskId;
+            using (var taskManager = _cpuTaskManager)
+            {
+                taskId = taskManager.StartNewTask(request.Complexity);
+            }
+
             return Ok(new { taskId });
         }
 
         [HttpPost("stop/{taskId}")]
         public IActionResult StopCPUTask(string taskId)
         {
-            if (!_cpuTaskManager.StopTask(taskId))
+            bool taskStopped;
+            using (var taskManager = _cpuTaskManager)
+            {
+                taskStopped = taskManager.StopTask(taskId);
+            }
+
+            if (!taskStopped)
                 return NotFound("Task not found");
 
             return Ok(new { message = "Task stopped successfully" });
@@ -38,14 +50,31 @@ namespace PerformanceIssuesDemo.Controllers
         public IActionResult GetActiveTasks()
         {
             var tasks = _cpuTaskManager.GetActiveTasks();
+            if (tasks != null && tasks.Any())
+            {
+                // Ensure tasks list is cleared after retrieving to free memory
+                tasks.Clear();
+            }
             return Ok(tasks);
         }
 
         [HttpPost("stop-all")]
         public IActionResult StopAllTasks()
         {
-            _cpuTaskManager.StopAllTasks();
+            using (var taskManager = _cpuTaskManager)
+            {
+                taskManager.StopAllTasks();
+            }
             return Ok(new { message = "All tasks stopped" });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _cpuTaskManager?.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }
