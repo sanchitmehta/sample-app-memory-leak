@@ -1,9 +1,10 @@
 ﻿namespace PerformanceIssues.Services
 {
-    public class DataGenerator
+    public class DataGenerator : IDisposable
     {
         private readonly List<object> _storedData = new();
         private readonly Random _random = new();
+        private bool _disposed = false;
 
         public async Task GenerateAndStoreData(int count)
         {
@@ -19,11 +20,11 @@
                 };
 
                 _random.NextBytes(data.Data);
-                _storedData.Add(data);  // Memory leak: storing without bounds
+                _storedData.Add(data);
 
                 if (i % 1000 == 0)
                 {
-                    await Task.Delay(1);  // Give other threads a chance to run
+                    await Task.Delay(1);
                 }
             }
         }
@@ -33,6 +34,35 @@
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             return new string(Enumerable.Repeat(chars, length)
                 .Select(s => s[_random.Next(s.Length)]).ToArray());
+        }
+
+        public void ClearData()
+        {
+            _storedData.Clear();
+            _storedData.Capacity = 0; // Reduce memory usage after clearing
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    ClearData();
+                }
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this); // Avoid finalizer overhead
+        }
+
+        ~DataGenerator()
+        {
+            Dispose(false);
         }
     }
 }
