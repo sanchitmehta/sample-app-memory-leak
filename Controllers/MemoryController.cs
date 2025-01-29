@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
@@ -43,10 +42,24 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpPost("subscribe")]
         public async Task<IActionResult> Subscribe()
         {
+            /*
+             * Problem: Potential memory leak due to not unsubscribing from events.
+             * Fix: Ensure the event subscription is properly managed or removed when no longer needed.
+             */
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+
+            // Temporary subscription only for the duration of the event raise
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                _eventManager.Unsubscribe(handler);
+            }
+
             return Ok(new { subscriberId = id });
         }
 
@@ -56,6 +69,11 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
+            /*
+             * Step: Ensure DataGenerator does not have unmanaged resource leaks.
+             * If DataGenerator uses CancellationTokenSource or other monitors,
+             * ensure proper cleanup is happening there.
+             */
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
             return Ok(new { recordsGenerated = request.RecordCount });
         }
@@ -63,6 +81,10 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpGet("dump")]
         public IActionResult MemoryDump(int processId = 1)
         {
+            /*
+             * Problem: ProcessStartInfo and related classes need to properly dispose underlying resources.
+             * Fix: Add 'using' statements to ensure resources are disposed as soon as they are no longer needed.
+             */
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
@@ -71,29 +93,32 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                // Using ReadToEnd synchronously to ensure disposal is completed
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+
+                // Parse and limit to top 100 objects
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   ")) // Filter memory dump lines
+                    .Take(100);
+
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
 }
