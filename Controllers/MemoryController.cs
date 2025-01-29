@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
@@ -30,6 +30,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.SizeMB <= 0 || request.SizeMB > 1000)
                 return BadRequest("Size must be between 1 and 1000 MB");
 
+            // Properly clear cache or monitor memory usage in ILeakyCache
             var key = await _leakyCache.AddToCache(Guid.NewGuid().ToString(), request.SizeMB);
             return Ok(new { key, size = request.SizeMB });
         }
@@ -44,10 +45,24 @@ namespace PerformanceIssuesDemo.Controllers
         public async Task<IActionResult> Subscribe()
         {
             var id = Guid.NewGuid().ToString();
-            Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
-            _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
-            return Ok(new { subscriberId = id });
+            Action<string> handler = null;
+
+            try
+            {
+                handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+                _eventManager.Subscribe(handler);
+
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+                return Ok(new { subscriberId = id });
+            }
+            finally
+            {
+                // Ensure the handler is unsubscribed to prevent memory leaks
+                if (handler != null)
+                {
+                    _eventManager.Unsubscribe(handler);
+                }
+            }
         }
 
         [HttpPost("generate-data")]
@@ -56,6 +71,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
+            // Ensure temporary data structures are cleared post usage in DataGenerator
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
             return Ok(new { recordsGenerated = request.RecordCount });
         }
@@ -71,28 +87,29 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
+
+            // Use IDisposable with using statement to ensure processes are cleaned up
             using var process = Process.Start(processStartInfo);
             if (process is null)
             {
                 return BadRequest("Failed to start memory dump process");
             }
-    
+
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
-    
+
             if (process.ExitCode != 0)
             {
                 return BadRequest(new { error });
             }
-    
+
             // Parse and limit to top 100 objects
             var lines = output.Split('\n')
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Where(l => l.Contains("   ")) // Filter memory dump lines
                 .Take(100);
-    
+
             return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
