@@ -1,6 +1,6 @@
-﻿namespace PerformanceIssues.Serivces
+namespace PerformanceIssues.Services
 {
-    public interface ICPUIntensiveTask
+    public interface ICPUIntensiveTask : IDisposable
     {
         void Start();
         void Stop();
