@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
@@ -44,10 +43,21 @@ namespace PerformanceIssuesDemo.Controllers
         public async Task<IActionResult> Subscribe()
         {
             var id = Guid.NewGuid().ToString();
-            Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
-            _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
-            return Ok(new { subscriberId = id });
+            Action<string> handler = null;
+            try
+            {
+                handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+                _eventManager.Subscribe(handler);
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+                return Ok(new { subscriberId = id });
+            }
+            finally
+            {
+                if (handler != null)
+                {
+                    _eventManager.Unsubscribe(handler);
+                }
+            }
         }
 
         [HttpPost("generate-data")]
@@ -57,6 +67,7 @@ namespace PerformanceIssuesDemo.Controllers
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
+            _dataGenerator.ClearGeneratedData(); // Explicitly clear data to prevent memory retention
             return Ok(new { recordsGenerated = request.RecordCount });
         }
 
@@ -71,28 +82,29 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
+
+            // Properly dispose the Process object
             using var process = Process.Start(processStartInfo);
             if (process is null)
             {
                 return BadRequest("Failed to start memory dump process");
             }
-    
+
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
-    
+
             if (process.ExitCode != 0)
             {
                 return BadRequest(new { error });
             }
-    
+
             // Parse and limit to top 100 objects
             var lines = output.Split('\n')
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Where(l => l.Contains("   ")) // Filter memory dump lines
                 .Take(100);
-    
+
             return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
