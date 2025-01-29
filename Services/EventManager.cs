@@ -1,15 +1,18 @@
-﻿namespace PerformanceIssues.Serivces
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace PerformanceIssues.Services
 {
-    public class EventManager : IEventManager
+    public class EventManager : IEventManager, IDisposable
     {
         private readonly List<WeakReference> _subscribers = new();
-        private readonly List<Action<string>> _strongSubscribers = new();  // Intentional memory leak
+        private bool _disposed = false;
 
         public void Subscribe(Action<string> handler)
         {
-            // Memory leak: storing both weak and strong references
+            // Use only weak references to allow garbage collection when no strong references exist
             _subscribers.Add(new WeakReference(handler));
-            _strongSubscribers.Add(handler);  // This prevents garbage collection
         }
 
         public void RaiseEvent(string message)
@@ -20,11 +23,21 @@
                 {
                     handler(message);
                 }
+                else
+                {
+                    // Remove dead references
+                    _subscribers.Remove(weakRef);
+                }
             }
+        }
 
-            foreach (var handler in _strongSubscribers)
+        public void Dispose()
+        {
+            if (!_disposed)
             {
-                handler(message);
+                // Clear the collection to remove references
+                _subscribers.Clear();
+                _disposed = true;
             }
         }
     }
