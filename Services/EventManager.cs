@@ -1,31 +1,49 @@
-﻿namespace PerformanceIssues.Serivces
+﻿namespace PerformanceIssues.Services
 {
-    public class EventManager : IEventManager
+    public class EventManager : IEventManager, IDisposable
     {
-        private readonly List<WeakReference> _subscribers = new();
-        private readonly List<Action<string>> _strongSubscribers = new();  // Intentional memory leak
+        private readonly List<WeakReference<Action<string>>> _subscribers = new();
+        private bool _disposed;
 
         public void Subscribe(Action<string> handler)
         {
-            // Memory leak: storing both weak and strong references
-            _subscribers.Add(new WeakReference(handler));
-            _strongSubscribers.Add(handler);  // This prevents garbage collection
+            if (handler == null) throw new ArgumentNullException(nameof(handler));
+
+            // Add a weak reference for the subscriber
+            _subscribers.Add(new WeakReference<Action<string>>(handler));
         }
 
         public void RaiseEvent(string message)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(EventManager));
+
             foreach (var weakRef in _subscribers.ToList())
             {
-                if (weakRef.Target is Action<string> handler)
+                if (weakRef.TryGetTarget(out var handler))
                 {
-                    handler(message);
+                    handler?.Invoke(message);
+                }
+                else
+                {
+                    // Remove dead references to avoid unnecessary growth
+                    _subscribers.Remove(weakRef);
                 }
             }
+        }
 
-            foreach (var handler in _strongSubscribers)
+        public void Dispose()
+        {
+            if (!_disposed)
             {
-                handler(message);
+                _subscribers.Clear(); // Release all held references
+                _disposed = true;
+                GC.SuppressFinalize(this); // Prevent finalizer from running
             }
+        }
+
+        ~EventManager()
+        {
+            Dispose();
         }
     }
 }
