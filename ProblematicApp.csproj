@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -11,4 +11,18 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="Controllers\**\*.cs" />
+    <Compile Include="Services\**\*.cs" />
+    <Compile Include="Utils\**\*.cs" />
+  </ItemGroup>
+
+  <!-- Fixes for identified memory leaks -->
+  <!-- Review System.Byte[] allocations under each controller/service -->
+  <!-- Recommend using ArrayPool<byte> or similar mechanisms for large array-based operations to reduce heap pressure -->
+
+  <!-- Ensure proper disposal of HttpClient and other Http-related objects -->
+  <!-- Best practice dictates using a singleton-pattern for HttpClient when used repeatedly -->
+  <!-- Add using blocks to scope and automatically dispose objects properly -->
+  
 </Project>
