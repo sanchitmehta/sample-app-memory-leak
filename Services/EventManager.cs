@@ -1,31 +1,46 @@
-﻿namespace PerformanceIssues.Serivces
+﻿namespace PerformanceIssues.Services
 {
-    public class EventManager : IEventManager
+    // Fixed namespace typo
+    public class EventManager : IEventManager, IDisposable
     {
-        private readonly List<WeakReference> _subscribers = new();
-        private readonly List<Action<string>> _strongSubscribers = new();  // Intentional memory leak
-
+        private readonly List<WeakReference> _subscribers = new();  // Storing weak references for event subscribers
+        private bool _disposed;  // To track disposal status
+        
         public void Subscribe(Action<string> handler)
         {
-            // Memory leak: storing both weak and strong references
+            // Updated: Removed intentional memory leak by eliminating strong references
             _subscribers.Add(new WeakReference(handler));
-            _strongSubscribers.Add(handler);  // This prevents garbage collection
         }
 
         public void RaiseEvent(string message)
         {
-            foreach (var weakRef in _subscribers.ToList())
+            foreach (var weakRef in _subscribers.ToList()) // Using ToList() to avoid collection modification during iteration
             {
                 if (weakRef.Target is Action<string> handler)
                 {
                     handler(message);
                 }
+                else
+                {
+                    _subscribers.Remove(weakRef); // Clean up dead references to minimize memory usage
+                }
             }
+        }
 
-            foreach (var handler in _strongSubscribers)
+        // Proper disposal pattern to clear resources
+        public void Dispose()
+        {
+            if (!_disposed)
             {
-                handler(message);
+                _subscribers.Clear();  // Clear the subscriber list to release memory
+                _disposed = true;
             }
+        }
+
+        // Destructor to ensure unmanaged resources are released
+        ~EventManager()
+        {
+            Dispose();
         }
     }
 }
