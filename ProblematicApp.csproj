@@ -12,3 +12,99 @@
   </ItemGroup>
 
 </Project>
+
+using System.Net.Http;
+
+public class ProblematicApp : IDisposable // Ensure the main application class implements IDisposable
+{
+    private readonly HttpClient _httpClient; // Properly manage disposable resources like HttpClient
+    private readonly CancellationTokenSource _cancellationTokenSource = new(); // CancellationTokenSource must be disposed when not needed
+    private readonly object _cacheLock = new(); // Needed for thread-safe cache management
+    private Dictionary<string, byte[]> _cache = new(); // Refactor cache to control memory usage properly
+    private bool _disposed; // Add flag for disposal status
+
+    public ProblematicApp()
+    {
+        _httpClient = new HttpClient();
+    }
+
+    public async Task FetchDataAsync(string url, string cacheKey)
+    {
+        if (_cache.ContainsKey(cacheKey))
+        {
+            // Short-circuit return if data already exists in cache
+            return;
+        }
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(url, _cancellationTokenSource.Token); // Utilize 'using' to avoid memory leaks for disposables
+            response.EnsureSuccessStatusCode();
+
+            var data = await response.Content.ReadAsByteArrayAsync();
+            lock (_cacheLock)
+            {
+                if (!_cache.ContainsKey(cacheKey))
+                {
+                    _cache[cacheKey] = data; // Efficiently populate cache to avoid unbounded memory use
+                }
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            Console.WriteLine($"Request to {url} was canceled."); // Handle proper logging without memory retention of excessive strings
+        }
+        finally
+        {
+            // No action required here since disposables like 'response' are used with 'using'
+        }
+    }
+
+    public void ClearCache()
+    {
+        lock (_cacheLock)
+        {
+            _cache.Clear(); // Clear cache to release memory promptly
+        }
+    }
+
+    public async Task PerformTaskWithCancellationAsync()
+    {
+        try
+        {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token); // Use linked token source, ensure it is disposed
+            await Task.Delay(1000, linkedCts.Token); // Token ensures no unnecessary work in canceled tasks
+        }
+        catch (TaskCanceledException)
+        {
+            Console.WriteLine("Operation canceled."); // Efficient and clean termination handling
+        }
+    }
+
+    // Dispose pattern for proper cleanup
+    public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                _httpClient?.Dispose(); // Dispose of managed resources like HttpClient
+                _cancellationTokenSource?.Dispose(); // Dispose of managed resources like CancellationTokenSource
+                ClearCache(); // Clear cache at application disposal
+            }
+
+            _disposed = true; // Set disposed flag
+        }
+    }
+
+    ~ProblematicApp()
+    {
+        Dispose(disposing: false); // Finalizer for cleanup in non-deterministic scenarios
+    }
+}
