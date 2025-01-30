@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
@@ -15,9 +15,7 @@ namespace PerformanceIssuesDemo.Controllers
         private readonly DataGenerator _dataGenerator;
 
         public MemoryController(
-            ILeakyCache leakyCache,
-            IEventManager eventManager,
-            DataGenerator dataGenerator)
+            ILeakyCache leakyCache, IEventManager eventManager, DataGenerator dataGenerator)
         {
             _leakyCache = leakyCache;
             _eventManager = eventManager;
@@ -44,9 +42,25 @@ namespace PerformanceIssuesDemo.Controllers
         public async Task<IActionResult> Subscribe()
         {
             var id = Guid.NewGuid().ToString();
-            Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
-            _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+
+            // Use weak references or explicit unsubscription to avoid memory leaks
+            Action<string> handler = msg => 
+            {
+                Console.WriteLine($"Event received for {id}: {msg}");
+            };
+
+            // Track handlers to ensure cleanup to avoid subscription leaks
+            try
+            {
+                _eventManager.Subscribe(handler);
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                // Ensure proper unsubscription
+                _eventManager.Unsubscribe(handler);
+            }
+
             return Ok(new { subscriberId = id });
         }
 
@@ -56,6 +70,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
+            // Ensure DataGenerator properly handles resources internally
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
             return Ok(new { recordsGenerated = request.RecordCount });
         }
@@ -66,16 +81,27 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
-            // Start generating data on a background thread (fire-and-forget).
-            _ = Task.Run(() => _dataGenerator.GenerateAndStoreData(request.RecordCount));
+            // Ensure fire-and-forget tasks are properly observed
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _dataGenerator.GenerateAndStoreData(request.RecordCount);
+                }
+                catch (Exception ex)
+                {
+                    // Log the error to avoid silent failures
+                    Console.Error.WriteLine($"Error while generating data in the background: {ex}");
+                }
+            });
 
-            // Immediately return a response, so the caller isn't blocked.
             return Ok(new { recordsRequested = request.RecordCount });
         }
 
         [HttpGet("dump")]
         public IActionResult MemoryDump(int processId = 1)
         {
+            // Properly scope and dispose of ProcessStartInfo and Process
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
@@ -84,24 +110,31 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            // Use 'using' blocks to ensure Process and streams are disposed
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                // Properly dispose streams to avoid resource leaks
+                using var outputReader = process.StandardOutput;
+                using var errorReader = process.StandardError;
+
+                var output = outputReader.ReadToEnd();
+                var error = errorReader.ReadToEnd();
+                process.WaitForExit();
+
+                // Parse and limit to top 100 objects
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   ")) // Filter memory dump lines
+                    .Take(100);
+
+                return Ok(output);
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(output);
         }
     }
 }
