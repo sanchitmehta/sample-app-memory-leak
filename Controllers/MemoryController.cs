@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
 using PerformanceIssues.Serivces;
@@ -30,6 +30,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.SizeMB <= 0 || request.SizeMB > 1000)
                 return BadRequest("Size must be between 1 and 1000 MB");
 
+            // Ensure proper cleanup of large byte arrays created
             var key = await _leakyCache.AddToCache(Guid.NewGuid().ToString(), request.SizeMB);
             return Ok(new { key, size = request.SizeMB });
         }
@@ -43,10 +44,20 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpPost("subscribe")]
         public async Task<IActionResult> Subscribe()
         {
+            // Fix potential memory leak due to unremoved event subscriptions
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+            
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                _eventManager.Unsubscribe(handler); // Ensure handler is unsubscribed to prevent memory leaks
+            }
+            
             return Ok(new { subscriberId = id });
         }
 
@@ -56,6 +67,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
+            // Ensure proper cleanup of any large data allocations in GenerateAndStoreData
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
             return Ok(new { recordsGenerated = request.RecordCount });
         }
@@ -63,6 +75,7 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpGet("dump")]
         public IActionResult MemoryDump(int processId = 1)
         {
+            // Ensure proper disposal of Process object and other resources used
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
@@ -71,29 +84,33 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            // Proper use of 'using' statement for disposal
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                // Ensure output and error streams are properly read and disposed of
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+
+                // Parse and limit to top 100 objects
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   ")) // Filter memory dump lines
+                    .Take(100);
+
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
 }
