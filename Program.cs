@@ -3,7 +3,6 @@ using PerformanceIssues.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
 builder.Services.AddControllers();
 // builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
@@ -23,6 +22,19 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// Scoped Fixes for Memory Leaks
 app.MapControllers();
 
-app.Run();
+// Ensure objects that require disposal are properly handled
+app.Run(async () =>
+{
+    // Wrap application in a using block to ensure disposables are disposed.
+    // Note: HttpClient usage must be handled carefully. If used in controllers, consider using IHttpClientFactory.
+    await using (app) 
+    {
+        // Place necessary application logic here if any.
+    }
+});
+
+app.Dispose();
+
