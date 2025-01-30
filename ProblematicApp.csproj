@@ -11,4 +11,12 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
 
+  <!-- 
+    Memory leak fix suggestions: 
+    1. Ensure that IDisposable objects are properly disposed.
+    2. Use 'using' statements for automatic disposal or explicitly call Dispose for objects implementing IDisposable.
+    3. Review services that are registered in dependency injection for singleton/lifetime mismatches.
+    4. Avoid retaining references longer than necessary, especially in collections or static fields.
+  -->
+
 </Project>
