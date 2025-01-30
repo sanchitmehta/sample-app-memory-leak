@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
@@ -30,7 +29,9 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.SizeMB <= 0 || request.SizeMB > 1000)
                 return BadRequest("Size must be between 1 and 1000 MB");
 
+            // Ensure large byte arrays are properly disposed in ILeakyCache
             var key = await _leakyCache.AddToCache(Guid.NewGuid().ToString(), request.SizeMB);
+
             return Ok(new { key, size = request.SizeMB });
         }
 
@@ -45,8 +46,19 @@ namespace PerformanceIssuesDemo.Controllers
         {
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+
+            // Subscribe only for the duration needed
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                // Unsubscribe the handler promptly to avoid memory leaks
+                _eventManager.Unsubscribe(handler);
+            }
+
             return Ok(new { subscriberId = id });
         }
 
@@ -56,6 +68,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.RecordCount <= 0 || request.RecordCount > 1000000)
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
+            // Ensure proper handling and disposal in DataGenerator
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
             return Ok(new { recordsGenerated = request.RecordCount });
         }
@@ -71,29 +84,32 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            // Properly dispose of Process object
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+
+                // Parse and limit to top 100 objects
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   ")) // Filter memory dump lines
+                    .Take(100);
+
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
 }
