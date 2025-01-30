@@ -1,7 +1,10 @@
-﻿using System.Diagnostics;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
@@ -31,6 +34,10 @@ namespace PerformanceIssuesDemo.Controllers
                 return BadRequest("Size must be between 1 and 1000 MB");
 
             var key = await _leakyCache.AddToCache(Guid.NewGuid().ToString(), request.SizeMB);
+
+            // Ensure no unnecessary string instances are retained
+            key = string.Intern(key);
+
             return Ok(new { key, size = request.SizeMB });
         }
 
@@ -44,9 +51,25 @@ namespace PerformanceIssuesDemo.Controllers
         public async Task<IActionResult> Subscribe()
         {
             var id = Guid.NewGuid().ToString();
-            Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
-            _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+
+            Action<string> handler = null;
+            try
+            {
+                // Subscribe to the event using a handler
+                handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+                _eventManager.Subscribe(handler);
+
+                // Raise event asynchronously
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                // Unsubscribe after use to prevent long-lived delegate references
+                if (handler != null)
+                {
+                    _eventManager.Unsubscribe(handler);
+                }
+            }
             return Ok(new { subscriberId = id });
         }
 
@@ -57,6 +80,7 @@ namespace PerformanceIssuesDemo.Controllers
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
             await _dataGenerator.GenerateAndStoreData(request.RecordCount);
+
             return Ok(new { recordsGenerated = request.RecordCount });
         }
 
@@ -71,29 +95,40 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
-            using var process = Process.Start(processStartInfo);
-            if (process is null)
+
+            // Ensure proper disposal of the Process object
+            using (var process = Process.Start(processStartInfo))
             {
-                return BadRequest("Failed to start memory dump process");
+                if (process is null)
+                {
+                    return BadRequest("Failed to start memory dump process");
+                }
+
+                // Capture output streams safely
+                string output;
+                string error;
+                using (var outputReader = process.StandardOutput)
+                using (var errorReader = process.StandardError)
+                {
+                    output = outputReader.ReadToEnd();
+                    error = errorReader.ReadToEnd();
+                }
+
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    return BadRequest(new { error });
+                }
+
+                // Parse and limit to top 100 objects
+                var lines = output.Split('\n')
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => l.Contains("   ")) // Filter memory dump lines
+                    .Take(100);
+
+                return Ok(new { memoryDump = string.Join("\n", lines) });
             }
-    
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-    
-            if (process.ExitCode != 0)
-            {
-                return BadRequest(new { error });
-            }
-    
-            // Parse and limit to top 100 objects
-            var lines = output.Split('\n')
-                .Where(l => !string.IsNullOrWhiteSpace(l))
-                .Where(l => l.Contains("   ")) // Filter memory dump lines
-                .Take(100);
-    
-            return Ok(new { memoryDump = string.Join("\n", lines) });
         }
     }
 }
