@@ -1,7 +1,7 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
 using PerformanceIssues.Services;
 
 namespace PerformanceIssuesDemo.Controllers
@@ -15,8 +15,8 @@ namespace PerformanceIssuesDemo.Controllers
         private readonly DataGenerator _dataGenerator;
 
         public MemoryController(
-            ILeakyCache leakyCache,
-            IEventManager eventManager,
+            ILeakyCache leakyCache, 
+            IEventManager eventManager, 
             DataGenerator dataGenerator)
         {
             _leakyCache = leakyCache;
@@ -45,8 +45,18 @@ namespace PerformanceIssuesDemo.Controllers
         {
             var id = Guid.NewGuid().ToString();
             Action<string> handler = msg => Console.WriteLine($"Event received for {id}: {msg}");
+
+            // Ensure the handler is unsubscribed after its usage to prevent a memory leak.
             _eventManager.Subscribe(handler);
-            await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            try
+            {
+                await Task.Run(() => _eventManager.RaiseEvent($"Test event for {id}"));
+            }
+            finally
+            {
+                _eventManager.Unsubscribe(handler);
+            }
+            
             return Ok(new { subscriberId = id });
         }
 
@@ -67,7 +77,17 @@ namespace PerformanceIssuesDemo.Controllers
                 return BadRequest("Record count must be between 1 and 1,000,000");
 
             // Start generating data on a background thread (fire-and-forget).
-            _ = Task.Run(() => _dataGenerator.GenerateAndStoreData(request.RecordCount));
+            _ = Task.Run(async () => 
+            {
+                try
+                {
+                    await _dataGenerator.GenerateAndStoreData(request.RecordCount);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error in background task: {ex.Message}");
+                }
+            });
 
             // Immediately return a response, so the caller isn't blocked.
             return Ok(new { recordsRequested = request.RecordCount });
@@ -84,23 +104,24 @@ namespace PerformanceIssuesDemo.Controllers
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-    
+
+            // Ensure the process is properly disposed of after its usage
             using var process = Process.Start(processStartInfo);
             if (process is null)
             {
                 return BadRequest("Failed to start memory dump process");
             }
-    
+
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
-    
+
             // Parse and limit to top 100 objects
             var lines = output.Split('\n')
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .Where(l => l.Contains("   ")) // Filter memory dump lines
                 .Take(100);
-    
+
             return Ok(output);
         }
     }
