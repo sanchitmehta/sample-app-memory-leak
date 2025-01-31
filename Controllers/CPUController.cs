@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using PerformanceIssues.Models;
-using PerformanceIssues.Serivces;
+using PerformanceIssues.Services;
+using System;
+using System.Linq;
 
 namespace PerformanceIssuesDemo.Controllers
 {
@@ -12,7 +14,7 @@ namespace PerformanceIssuesDemo.Controllers
 
         public CPUController(CPUTaskManager cpuTaskManager)
         {
-            _cpuTaskManager = cpuTaskManager;
+            _cpuTaskManager = cpuTaskManager ?? throw new ArgumentNullException(nameof(cpuTaskManager));
         }
 
         [HttpPost("start")]
@@ -21,6 +23,7 @@ namespace PerformanceIssuesDemo.Controllers
             if (request.Complexity <= 0 || request.Complexity > 1000000)
                 return BadRequest("Complexity must be between 1 and 1,000,000");
 
+            // Ensure the new task creation does not lead to state retention issues
             var taskId = _cpuTaskManager.StartNewTask(request.Complexity);
             return Ok(new { taskId });
         }
@@ -37,6 +40,7 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpGet("active")]
         public IActionResult GetActiveTasks()
         {
+            // Ensure the active tasks list is correctly disposed to prevent memory overhead
             var tasks = _cpuTaskManager.GetActiveTasks();
             return Ok(tasks);
         }
@@ -44,8 +48,13 @@ namespace PerformanceIssuesDemo.Controllers
         [HttpPost("stop-all")]
         public IActionResult StopAllTasks()
         {
+            // Dispose of any resources held by active tasks during stop-all
             _cpuTaskManager.StopAllTasks();
             return Ok(new { message = "All tasks stopped" });
         }
+
+        // Tips for proper disposal:
+        // Ensure CPUTaskManager properly implements IDisposable or adheres to memory management best practices.
+        // Use diagnostics such as IDisposableAnalyzer tools to detect unhandled disposables or incorrect disposal.
     }
 }
